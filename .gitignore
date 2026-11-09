@@ -1,0 +1,23 @@
+# Entorno virtual
+.venv/
+venv/
+ENV/
+
+# Caché de Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Configuración de VS Code y editores
+.vscode/
+.idea/
+
+# Datos y reportes generados localmente por la simulación
+data/crudo/
+data/limpio/
+data/reportes/
+reportes/
+
+# Archivos temporales del sistema
+.DS_Store
+Thumbs.db
