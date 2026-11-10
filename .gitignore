@@ -8,15 +8,15 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# Configuración de VS Code y editores
+# Configuración de editores
 .vscode/
 .idea/
 
-# Datos y reportes generados localmente por la simulación
+# Carpetas de datos y gráficas generadas localmente
 data/crudo/
 data/limpio/
+data/graficas/
 data/reportes/
-reportes/
 
 # Archivos temporales del sistema
 .DS_Store

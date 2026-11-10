@@ -1,8 +1,14 @@
 import sys
 from pathlib import Path
 
-# 1. Al estar dentro de src/, la raíz del proyecto es parents[1] (dos niveles arriba)
-RAIZ_PROYECTO = Path(__file__).resolve().parents[1]
+# Buscar dinámicamente la raíz del proyecto (Integrador_NT_martes_4)
+ARCHIVO_ACTUAL = Path(__file__).resolve()
+RAIZ_PROYECTO = ARCHIVO_ACTUAL
+for carpeta in [ARCHIVO_ACTUAL] + list(ARCHIVO_ACTUAL.parents):
+    if carpeta.name == "Integrador_NT_martes_4":
+        RAIZ_PROYECTO = carpeta
+        break
+
 if str(RAIZ_PROYECTO) not in sys.path:
     sys.path.append(str(RAIZ_PROYECTO))
 
@@ -23,8 +29,8 @@ from notebook.consultas.consultas_empresas import (
     consulta_5_groupby_doble,
     guardar as guardar_consulta,
 )
-from notebook.reportes.reporte_empresas import (
-    cargar_datos as cargar_datos_reportes,
+from notebook.graficas.graficar_empresas import (
+    cargar_datos as cargar_datos_graficas,
     grafica_1_por_sector,
     grafica_2_activas,
     grafica_3_apiladas,
@@ -64,12 +70,12 @@ def ejecutar_pipeline_master():
         guardar_consulta(res, carpeta_destino, num)
 
     print("\n=== 4. INICIANDO REPORTE GRÁFICO Y CONCLUSIONES (HU G01) ===")
-    df_reporte = cargar_datos_reportes(RUTA_LIMPIO)
-    r1, por_sector = grafica_1_por_sector(df_reporte)
-    r2, conteo_activa = grafica_2_activas(df_reporte)
-    r3, tabla = grafica_3_apiladas(df_reporte)
-    print(f"Gráficas creadas en data/reportes:\n  - {r1}\n  - {r2}\n  - {r3}")
-    imprimir_conclusiones(df_reporte, por_sector, conteo_activa, tabla)
+    df_graficas = cargar_datos_graficas(RUTA_LIMPIO)
+    r1, por_sector = grafica_1_por_sector(df_graficas)
+    r2, conteo_activa = grafica_2_activas(df_graficas)
+    r3, tabla = grafica_3_apiladas(df_graficas)
+    print(f"Gráficas creadas en data/graficas:\n  - {r1}\n  - {r2}\n  - {r3}")
+    imprimir_conclusiones(df_graficas, por_sector, conteo_activa, tabla)
 
     print("\n=== PIPELINE INTEGRAL COMPLETO CON ÉXITO ===")
 
