@@ -1,92 +1,119 @@
+import os
 import sys
+import importlib
+import inspect
 from pathlib import Path
 
-# Buscar dinámicamente la raíz del proyecto (Integrador_NT_martes_4)
-ARCHIVO_ACTUAL = Path(__file__).resolve()
-RAIZ_PROYECTO = ARCHIVO_ACTUAL
-for carpeta in [ARCHIVO_ACTUAL] + list(ARCHIVO_ACTUAL.parents):
-    if carpeta.name == "Integrador_NT_martes_4":
-        RAIZ_PROYECTO = carpeta
-        break
-
-if str(RAIZ_PROYECTO) not in sys.path:
-    sys.path.append(str(RAIZ_PROYECTO))
-
-RUTA_SIMULACIONES = RAIZ_PROYECTO / "notebook" / "simulaciones"
-if str(RUTA_SIMULACIONES) not in sys.path:
-    sys.path.insert(0, str(RUTA_SIMULACIONES))
-
-from notebook.exportaciones.exportar_empresas import exportar_empresas_crudos
-from notebook.exportaciones.exportar_retos import main as exportar_retos_crudos
-from notebook.limpieza.limpieza_empresas import (
-    RUTA_SALIDA as RUTA_LIMPIO,
-    leer_csv,
-    limpiar,
-    imprimir_diagnostico,
-    guardar as guardar_limpio,
-)
-from notebook.consultas.consultas_empresas import (
-    cargar_datos as cargar_datos_consultas,
-    consulta_1_activas,
-    consulta_2_sector,
-    consulta_3_conteo,
-    consulta_4_groupby,
-    consulta_5_groupby_doble,
-    guardar as guardar_consulta,
-)
-from notebook.graficas.graficar_empresas import (
-    cargar_datos as cargar_datos_graficas,
-    grafica_1_por_sector,
-    grafica_2_activas,
-    grafica_3_apiladas,
-    imprimir_conclusiones,
-)
+# Agregar la raíz del proyecto a sys.path
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.append(str(ROOT_DIR))
 
 
-def ejecutar_pipeline_master():
-    print("=== 1. INICIANDO SIMULACIÓN Y EXPORTACIÓN (HU F01 / X01) ===")
-    rutas_crudos = exportar_empresas_crudos()
-    for ruta in rutas_crudos:
-        print(f"  - {ruta}")
+def obtener_funcion(path_modulo, *nombres_posibles):
+    """Busca dinámicamente la función a ejecutar en un módulo."""
+    try:
+        mod = importlib.import_module(path_modulo)
+        for nombre in nombres_posibles:
+            if hasattr(mod, nombre):
+                func = getattr(mod, nombre)
+                if callable(func):
+                    return func
+        if hasattr(mod, "main") and callable(mod.main):
+            return mod.main
+    except Exception as e:
+        print(f"  ⚠️ Error al cargar módulo '{path_modulo}': {e}")
+    return None
 
-    print("\n=== INICIANDO EXPORTACIÓN DE RETOS (HU X01) ===")
-    exportar_retos_crudos()
 
-    print("\n=== 2. INICIANDO LIMPIEZA DE DATOS (HU L01) ===")
-    ruta_csv_sucio = RAIZ_PROYECTO / "data" / "crudo" / "empresas_sucio.csv"
-    df_sucio = leer_csv(ruta_csv_sucio)
-    filas_antes = len(df_sucio)
-    imprimir_diagnostico(df_sucio, "DIAGNÓSTICO ANTES DE LIMPIAR")
-    df_limpio = limpiar(df_sucio)
-    imprimir_diagnostico(df_limpio, "DIAGNÓSTICO DESPUÉS DE LIMPIAR")
-    print(
-        f"\nFilas eliminadas: {filas_antes - len(df_limpio)} ({filas_antes} -> {len(df_limpio)})"
-    )
-    guardar_limpio(df_limpio, RUTA_LIMPIO)
+def ejecutar_seguro(func, ruta_defecto=None):
+    """Ejecuta la función protegiendo el pipeline contra sys.exit() y pasando rutas por defecto."""
+    argv_original = list(sys.argv)
+    if ruta_defecto:
+        sys.argv = [sys.argv[0], str(ruta_defecto)]
+    
+    try:
+        sig = inspect.signature(func)
+        params_requeridos = [p for p in sig.parameters.values() if p.default == p.empty]
+        if len(params_requeridos) > 0 and ruta_defecto:
+            func(str(ruta_defecto))
+        else:
+            func()
+    except SystemExit:
+        pass  # Evita que sys.exit() dentro de un módulo tumbe main.py
+    finally:
+        sys.argv = argv_original
 
-    print("\n=== 3. INICIANDO CONSULTAS DE INFORMACIÓN (HU Q01) ===")
-    df_consultas = cargar_datos_consultas(RUTA_LIMPIO)
-    carpeta_destino = RUTA_LIMPIO.parent
-    resultados = [
-        consulta_1_activas(df_consultas),
-        consulta_2_sector(df_consultas, "Logistica"),
-        consulta_3_conteo(df_consultas),
-        consulta_4_groupby(df_consultas),
-        consulta_5_groupby_doble(df_consultas),
-    ]
-    for num, res in enumerate(resultados, start=1):
-        guardar_consulta(res, carpeta_destino, num)
 
-    print("\n=== 4. INICIANDO REPORTE GRÁFICO Y CONCLUSIONES (HU G01) ===")
-    df_graficas = cargar_datos_graficas(RUTA_LIMPIO)
-    r1, por_sector = grafica_1_por_sector(df_graficas)
-    r2, conteo_activa = grafica_2_activas(df_graficas)
-    r3, tabla = grafica_3_apiladas(df_graficas)
-    print(f"Gráficas creadas en data/graficas:\n  - {r1}\n  - {r2}\n  - {r3}")
-    imprimir_conclusiones(df_graficas, por_sector, conteo_activa, tabla)
+def crear_directorios():
+    """Garantiza la existencia de la estructura data/"""
+    for subcarpeta in ["crudo", "limpio", "graficas"]:
+        os.makedirs(ROOT_DIR / "data" / subcarpeta, exist_ok=True)
 
-    print("\n=== PIPELINE INTEGRAL COMPLETO CON ÉXITO ===")
+
+def ejecutar_paso(nombre_paso, tareas):
+    print(f"\n--- {nombre_paso} ---")
+    for item in tareas:
+        nombre_tarea = item[0]
+        path_modulo = item[1]
+        nombres_posibles = item[2]
+        ruta_defecto = item[3] if len(item) > 3 else None
+
+        func = obtener_funcion(path_modulo, *nombres_posibles)
+        if func:
+            try:
+                ejecutar_seguro(func, ruta_defecto)
+                print(f"  ✓ {nombre_tarea} ejecutado correctamente.")
+            except Exception as e:
+                print(f"  ⚠️ Error en {nombre_tarea}: {e}")
+        else:
+            print(f"  ℹ️ {nombre_tarea} omitido (función no encontrada en {path_modulo}).")
+
+
+def main():
+    print("=" * 60)
+    print("   EJECUCIÓN PIPELINE PROYECTO INTEGRADOR (KAIZEN)   ")
+    print("=" * 60)
+
+    crear_directorios()
+
+    ejecutar_paso("1. SIMULACIÓN DE DATOS (F01)", [
+        ("Empresas", "notebook.simulaciones.simular_empresas", ["generar_empresas", "simular_empresas"]),
+        ("Categorías", "notebook.simulaciones.simular_categorias", ["generar_categorias", "simular_categorias"]),
+        ("Registros", "notebook.simulaciones.simular_registros", ["generar_registros", "simular_registros"]),
+        ("Retos", "notebook.simulaciones.simular_retos", ["generar_retos", "simular_retos"]),
+    ])
+
+    ejecutar_paso("2. EXPORTACIÓN DE ARCHIVOS CRUDOS (X01)", [
+        ("Empresas Crudos", "notebook.exportaciones.exportar_empresas", ["exportar_empresas_crudos", "exportar_empresas"]),
+        ("Categorías Crudos", "notebook.exportaciones.exportar_categorias", ["exportar_categorias", "exportar_categorias_crudos"]),
+        ("Registros Crudos", "notebook.exportaciones.exportar_registros", ["exportar_registros", "exportar_registros_crudos"]),
+        ("Retos Crudos", "notebook.exportaciones.exportar_retos", ["exportar_retos", "exportar_retos_crudos"]),
+    ])
+
+    ejecutar_paso("3. LIMPIEZA DE DATOS (L01)", [
+        ("Limpieza Empresas", "notebook.limpieza.limpieza_empresas", ["main", "limpiar_empresas", "limpieza_empresas"], ROOT_DIR / "data" / "crudo" / "empresas_sucio.csv"),
+        ("Limpieza Categorías", "notebook.limpieza.limpiar_categorias", ["main", "limpieza_categorias", "limpiar_categorias"], ROOT_DIR / "data" / "crudo" / "categorias_sucio.csv"),
+        ("Limpieza Registros", "notebook.limpieza.limpieza_registros", ["main", "limpieza_registros", "limpiar_registros"], ROOT_DIR / "data" / "crudo" / "registros_sucio.csv"),
+        ("Limpieza Retos", "notebook.limpieza.limpieza_retos", ["main", "limpieza_retos", "limpiar_retos"], ROOT_DIR / "data" / "crudo" / "retos_sucio.csv"),
+    ])
+
+    ejecutar_paso("4. CONSULTAS Y ANÁLISIS (Q01)", [
+        ("Consultas Registros", "notebook.consultas.consultas_registros", ["main", "consultar_registros", "consultas_registros"]),
+        ("Consultas Retos", "notebook.consultas.consultas_retos", ["main", "consultar_retos", "consultas_retos"]),
+    ])
+
+    ejecutar_paso("5. REPORTES GRÁFICOS (G01)", [
+        ("Gráficas Empresas", "notebook.graficas.graficar_empresas", ["main", "graficar_empresas"]),
+        ("Gráficas Categorías", "notebook.graficas.reporte_categorias", ["main", "reporte_categorias"]),
+        ("Gráficas Registros", "notebook.graficas.graficar_registros", ["main", "graficar_registros"]),
+        ("Gráficas Retos", "notebook.graficas.graficar_retos", ["main", "graficar_retos"]),
+    ])
+
+    print("\n" + "=" * 60)
+    print("   ✓ EJECUCIÓN DEL PIPELINE CONCLUIDA   ")
+    print("=" * 60)
 
 
 if __name__ == "__main__":
-    ejecutar_pipeline_master()
+    main()

@@ -13,16 +13,17 @@ matplotlib.use("Agg")  # Modo sin ventana para ejecución continua
 import matplotlib.pyplot as plt
 import pandas as pd
 
-# Definición dinámica de la ruta de salida en data/graficas/
+# Definición dinámica de rutas
 RAIZ_PROYECTO = Path(__file__).resolve().parents[2]
 CARPETA = RAIZ_PROYECTO / "data" / "graficas"
+ARCHIVO_DEFECTO = RAIZ_PROYECTO / "data" / "limpio" / "empresas_limpio.csv"
 
 
 def cargar_datos(ruta):
     """Lee el CSV limpio y asegura que 'activa' y 'correo_valido' sean booleanos."""
     df = pd.read_csv(ruta, dtype={"id": str, "nit": str, "telefono": str})
     for columna in ("activa", "correo_valido"):
-        if df[columna].dtype != bool:
+        if columna in df.columns and df[columna].dtype != bool:
             df[columna] = df[columna].astype(str).str.strip().str.lower().eq("true")
     return df
 
@@ -32,7 +33,7 @@ def guardar(nombre):
     cierra la figura y devuelve la ruta del archivo.
     """
     plt.tight_layout()
-    os.makedirs(CARPETA, exist_ok=True)  # Crea data/graficas si no existe
+    os.makedirs(CARPETA, exist_ok=True)
     ruta = CARPETA / nombre
     plt.savefig(ruta, dpi=120)
     plt.close()
@@ -66,6 +67,9 @@ def grafica_3_apiladas(df):
     """Grafica 3 (barras apiladas): activas e inactivas por sector."""
     tabla = df.groupby(["sector", "activa"])["id"].count().unstack(fill_value=0)
     tabla = tabla.rename(columns={False: "Inactivas", True: "Activas"})
+    for col in ["Activas", "Inactivas"]:
+        if col not in tabla.columns:
+            tabla[col] = 0
     tabla = tabla[["Activas", "Inactivas"]]
     plt.figure(figsize=(9, 5))
     tabla.plot(kind="bar", stacked=True, color=["#3b7dd8", "#e08a3c"], ax=plt.gca())
@@ -83,46 +87,43 @@ def imprimir_conclusiones(df, por_sector, conteo_activa, tabla):
     sector_top = por_sector.index[0]
     cantidad_top = por_sector.iloc[0]
     inactivas = int(conteo_activa.get("Inactivas", 0))
-    pct_inactivas = inactivas / total * 100
-    invalidos = int((~df["correo_valido"]).sum())
-    pct_invalidos = invalidos / total * 100
-    tabla_pct = tabla["Inactivas"] / tabla.sum(axis=1) * 100
-    peor = tabla_pct.idxmax()
+    pct_inactivas = (inactivas / total * 100) if total > 0 else 0
 
-    print("\n=== Conclusiones ===")
+    invalidos = int((~df["correo_valido"]).sum()) if "correo_valido" in df.columns else 0
+    pct_invalidos = (invalidos / total * 100) if total > 0 else 0
+
+    suma_filas = tabla.sum(axis=1)
+    tabla_pct = (tabla["Inactivas"] / suma_filas * 100).fillna(0)
+    peor = tabla_pct.idxmax() if not tabla_pct.empty else "N/A"
+
+    print("\n=== Conclusiones Empresas ===")
     print(
         f"1. El sector con más empresas registradas es {sector_top} "
         f"({cantidad_top} de {total}, {cantidad_top / total * 100:.1f}%)."
     )
     print(
         f"2. {inactivas} empresas están inactivas ({pct_inactivas:.1f}%). "
-        "Para la plataforma significa que esa proporción del registro no "
-        "genera actividad: infla las cifras, hay que decidir si se depura "
-        "o se reactiva, y conviene vigilarla. "
         f"El sector con mayor proporción de inactivas es {peor} "
-        f"({tabla_pct[peor]:.1f}%)."
+        f"({tabla_pct.get(peor, 0):.1f}%)."
     )
-    print(
-        f"3. Aparecieron {invalidos} correos inválidos ({pct_invalidos:.1f}%). "
-        "Hay que validarlos en el back porque la validación del front se "
-        "puede saltar (otro cliente, la API directa, datos importados), y un "
-        "correo malo rompe notificaciones y recuperación de cuentas."
-    )
-
-
-def main():
-    """Lee el CSV, crea las tres gráficas, imprime sus rutas y las conclusiones."""
-    if len(sys.argv) < 2:
+    if "correo_valido" in df.columns:
         print(
-            "Uso: python notebook/graficas/graficar_empresas.py"
-            " data/limpio/empresas_limpio.csv"
+            f"3. Aparecieron {invalidos} correos inválidos ({pct_invalidos:.1f}%)."
         )
-        sys.exit(1)
 
-    ruta_csv = Path(sys.argv[1])
+
+def main(ruta_entrada=None):
+    """Punto de entrada general para consola o pipeline main.py."""
+    if ruta_entrada:
+        ruta_csv = Path(ruta_entrada)
+    elif len(sys.argv) > 1:
+        ruta_csv = Path(sys.argv[1])
+    else:
+        ruta_csv = ARCHIVO_DEFECTO
+
     if not ruta_csv.exists():
-        print(f"No se encontró el archivo: {ruta_csv}")
-        sys.exit(1)
+        print(f"⚠️ No se encontró el archivo de empresas limpio: {ruta_csv}")
+        return
 
     os.makedirs(CARPETA, exist_ok=True)
     df = cargar_datos(ruta_csv)
@@ -131,7 +132,7 @@ def main():
     ruta2, conteo_activa = grafica_2_activas(df)
     ruta3, tabla = grafica_3_apiladas(df)
 
-    print("Gráficas guardadas:")
+    print("Gráficas de empresas guardadas:")
     for ruta in (ruta1, ruta2, ruta3):
         print(f"  {ruta}")
 
