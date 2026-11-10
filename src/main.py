@@ -6,7 +6,12 @@ RAIZ_PROYECTO = Path(__file__).resolve().parents[1]
 if str(RAIZ_PROYECTO) not in sys.path:
     sys.path.append(str(RAIZ_PROYECTO))
 
+RUTA_SIMULACIONES = RAIZ_PROYECTO / "notebook" / "simulaciones"
+if str(RUTA_SIMULACIONES) not in sys.path:
+    sys.path.insert(0, str(RUTA_SIMULACIONES))
+
 from notebook.exportaciones.exportar_empresas import exportar_empresas_crudos
+from notebook.exportaciones.exportar_retos import main as exportar_retos_crudos
 from notebook.limpieza.limpieza_empresas import (
     RUTA_SALIDA as RUTA_LIMPIO,
     leer_csv,
@@ -37,6 +42,9 @@ def ejecutar_pipeline_master():
     rutas_crudos = exportar_empresas_crudos()
     for ruta in rutas_crudos:
         print(f"  - {ruta}")
+
+    print("\n=== INICIANDO EXPORTACIÓN DE RETOS (HU X01) ===")
+    exportar_retos_crudos()
 
     print("\n=== 2. INICIANDO LIMPIEZA DE DATOS (HU L01) ===")
     ruta_csv_sucio = RAIZ_PROYECTO / "data" / "crudo" / "empresas_sucio.csv"
